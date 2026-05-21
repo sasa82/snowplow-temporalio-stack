@@ -1,7 +1,22 @@
+### Environment files
 .env
 *.env
+
+### Generated hocon files
+production/snowplow/config/iglu/iglu.hocon
+production/snowplow/config/collector/config.hocon
+production/snowplow/config/enrich/enrich.hocon
+
+### Python
 __pycache__/
 *.pyc
+
+### OS
 .DS_Store
+
+### Load test results
 load-testing/results/**/*.csv
 load-testing/results/**/*.jtl
+
+### GeoIP database
+production/snowplow/config/geoip/*.mmdb

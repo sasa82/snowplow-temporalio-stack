@@ -1,0 +1,58 @@
+services:
+
+  iglu-server:
+    image: snowplow/iglu-server:0.12.0
+    container_name: iglu-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/iglu/iglu.hocon:/iglu/iglu.hocon
+    command: ["--config", "/iglu/iglu.hocon"]
+    ports:
+      - "${IGLU_PORT:-9201}:8080"
+    networks:
+      - snowplow-net
+      - infrastructure_default
+
+  scala-stream-collector:
+    image: snowplow/scala-stream-collector-kafka:3.1.0
+    container_name: scala-stream-collector
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/collector:/snowplow/config
+    ports:
+      - "${COLLECTOR_PORT:-9200}:8080"
+    command: ["--config", "/snowplow/config/config.hocon"]
+    depends_on:
+      - iglu-server
+    networks:
+      - snowplow-net
+      - infrastructure_default
+
+  snowplow-enrich:
+    image: snowplow/stream-enrich-kafka:3.7.2
+    container_name: snowplow-enrich
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/enrich:/snowplow/config
+    command: [
+      "--resolver", "file:///snowplow/config/resolver.json",
+      "--config", "/snowplow/config/enrich.hocon",
+      "--enrichments", "file:///snowplow/config/enrichments/"
+    ]
+    depends_on:
+      - iglu-server
+    networks:
+      - snowplow-net
+      - infrastructure_default
+
+networks:
+  snowplow-net:
+    driver: bridge
+  infrastructure_default:
+    external: true
