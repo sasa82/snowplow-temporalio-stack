@@ -1,0 +1,86 @@
+name: temporal
+
+services:
+
+  #### ─── PostgreSQL ──────────────────────────────────────────────
+  postgresql:
+    container_name: temporal-postgresql
+    image: postgres:${POSTGRESQL_VERSION:-13}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-temporal}
+      POSTGRES_USER: ${POSTGRES_USER:-temporal}
+      POSTGRES_DB: ${POSTGRES_DB:-temporal}
+    networks:
+      - temporal-network
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-temporal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── Temporal ────────────────────────────────────────────────
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.22.4}
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-temporal}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-temporal}
+      - POSTGRES_SEEDS=postgresql
+      - POSTGRES_DB=${POSTGRES_DB:-temporal}
+      - VISIBILITY_DBNAME=${VISIBILITY_DBNAME:-temporal_visibility}
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - temporal-network
+    ports:
+      - "${TEMPORAL_PORT:-7233}:7233"
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    restart: unless-stopped
+
+  #### ─── Temporal Admin Tools ────────────────────────────────────
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.22.4}
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - temporal-network
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  #### ─── Temporal UI ─────────────────────────────────────────────
+  temporal-ui:
+    container_name: temporal-ui
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.22.3}
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=${TEMPORAL_CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - temporal-network
+    ports:
+      - "${TEMPORAL_UI_PORT:-8200}:8080"
+    restart: unless-stopped
+
+networks:
+  temporal-network:
+    driver: bridge
+
+volumes:
+  temporal-postgres-data:
+
