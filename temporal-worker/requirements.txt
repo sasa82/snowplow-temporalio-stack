@@ -1,0 +1,4 @@
+temporalio==1.23.0
+aiokafka==0.10.0
+redis
+python-snappy==0.7.2

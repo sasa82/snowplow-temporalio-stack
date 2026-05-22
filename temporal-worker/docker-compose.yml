@@ -1,0 +1,20 @@
+name: temporal-worker
+
+services:
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: temporal-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - infrastructure_default
+      - temporal_temporal-network
+
+networks:
+  infrastructure_default:
+    external: true
+  temporal_temporal-network:
+    external: true
