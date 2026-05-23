@@ -1,0 +1,39 @@
+enrich {
+  streams {
+    in {
+      raw = "snowplow_good"
+    }
+
+    out {
+      enriched = "snowplow_enriched_good"
+      bad = "snowplow_enriched_bad"
+      partitionKey = user_ipaddress
+    }
+
+    sourceSink {
+      enabled = kafka
+      initialPosition = TRIM_HORIZON
+      brokers = "kafka:9092"
+      retries = 0
+      producerConf {
+        acks = all
+      }
+      consumerConf {
+        "enable.auto.commit" = true
+        "auto.commit.interval.ms" = 1000
+        "auto.offset.reset" = earliest
+        "session.timeout.ms" = 30000
+        "key.deserializer" = "org.apache.kafka.common.serialization.StringDeserializer"
+        "value.deserializer" = "org.apache.kafka.common.serialization.ByteArrayDeserializer"
+      }
+    }
+
+    buffer {
+      byteLimit = 16384
+      recordLimit = 5
+      timeLimit = 1000
+    }
+
+    appName = "snowplow_consumer_group"
+  }
+}

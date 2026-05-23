@@ -1,0 +1,14 @@
+{
+  "database": {
+    "type": "postgres",
+    "host": "postgresql",
+    "port": 5432,
+    "dbname": "igludb",
+    "username": "postgres",
+    "password": "changeme"
+  },
+  "superApiKey": "48b267d7-cd2b-4f22-bae4-0f002008b5ad",
+  "license": {
+    "accept": true
+  }
+}

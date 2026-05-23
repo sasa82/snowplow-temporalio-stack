@@ -1,0 +1,98 @@
+collector {
+  license {
+    accept = true
+  }
+
+  interface = "0.0.0.0"
+  port = 8080
+
+  ssl {
+    enable = false
+    redirect = false
+    port = 443
+  }
+
+  hsts {
+    enable = false
+    maxAge = 365 days
+  }
+
+  paths {}
+
+  crossDomain {
+    enabled = true
+    domains = [ "*" ]
+    secure = true
+  }
+
+  cookie {
+    enabled = true
+    expiration = 365 days
+    name = sp
+    secure = false
+    httpOnly = true
+    sameSite = "None"
+  }
+
+  doNotTrackCookie {
+    enabled = false
+    name = ""
+    value = ""
+  }
+
+  cookieBounce {
+    enabled = false
+    name = "n3pc"
+    fallbackNetworkUserId = "00000000-0000-4000-A000-000000000000"
+  }
+
+  enableDefaultRedirect = false
+  redirectDomains = []
+
+  redirectMacro {
+    enabled = false
+  }
+
+  rootResponse {
+    enabled = false
+    statusCode = 302
+    headers = {}
+    body = ""
+  }
+
+  cors {
+    accessControlMaxAge = 60 minutes
+  }
+
+  streams {
+    useIpAddressAsPartitionKey = false
+
+    good {
+      name = "${KAFKA_TOPIC_GOOD}"
+      brokers = "${KAFKA_BROKERS}"
+      retries = 10
+      maxBytes = 1000000
+      buffer {
+        byteLimit = 3145728
+        recordLimit = 500
+        timeLimit = 5000
+      }
+    }
+
+    bad {
+      name = "${KAFKA_TOPIC_BAD}"
+      brokers = "${KAFKA_BROKERS}"
+      retries = 10
+      maxBytes = 1000000
+      buffer {
+        byteLimit = 3145728
+        recordLimit = 500
+        timeLimit = 5000
+      }
+    }
+  }
+
+  preTerminationPeriod = 10 seconds
+  preTerminationUnhealthy = false
+  terminationDeadline = 10 seconds
+}

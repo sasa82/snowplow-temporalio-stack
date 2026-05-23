@@ -1,0 +1,265 @@
+name: demo
+
+networks:
+  demo-net:
+    driver: bridge
+
+volumes:
+  kafka_data:
+  clickhouse_data:
+  clickhouse_logs:
+  postgresql_data:
+  redis_data:
+  temporal_postgres_data:
+
+services:
+
+  #### ─── Kafka (single node) ─────────────────────────────────────
+  kafka:
+    image: apache/kafka:${KAFKA_VERSION:-4.2.0}
+    container_name: demo-kafka
+    networks:
+      - demo-net
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_HEAP_OPTS: "-Xmx${KAFKA_HEAP_SIZE:-512M} -Xms${KAFKA_HEAP_SIZE:-512M}"
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-demo-cluster-id-0001}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "kafka:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── ClickHouse (single node) ───────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-26.4.2.10}
+    container_name: demo-clickhouse
+    networks:
+      - demo-net
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── PostgreSQL with ClickHouse FDW ─────────────────────────
+  postgresql:
+    image: implustechnology/postgres_clickhouse_fdw:latest
+    container_name: demo-postgresql
+    networks:
+      - demo-net
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── Redis ───────────────────────────────────────────────────
+  redis:
+    image: redis:${REDIS_VERSION:-8}
+    container_name: demo-redis
+    networks:
+      - demo-net
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── Iglu Server ─────────────────────────────────────────────
+  iglu-server:
+    image: snowplow/iglu-server:0.12.0
+    container_name: demo-iglu-server
+    networks:
+      - demo-net
+    ports:
+      - "9201:8080"
+    volumes:
+      - ./config/iglu/iglu.hocon:/iglu/iglu.hocon
+    command: ["--config", "/iglu/iglu.hocon"]
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  #### ─── Snowplow Collector ──────────────────────────────────────
+  collector:
+    image: snowplow/scala-stream-collector-kafka:3.1.0
+    container_name: demo-collector
+    networks:
+      - demo-net
+    ports:
+      - "9200:8080"
+    volumes:
+      - ./config/collector:/snowplow/config
+    command: ["--config", "/snowplow/config/config.hocon"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      iglu-server:
+        condition: service_started
+    restart: unless-stopped
+
+  #### ─── Snowplow Enrich ─────────────────────────────────────────
+  enrich:
+    image: snowplow/stream-enrich-kafka:3.7.2
+    container_name: demo-enrich
+    networks:
+      - demo-net
+    volumes:
+      - ./config/enrich:/snowplow/config
+    command: [
+      "--resolver", "file:///snowplow/config/resolver.json",
+      "--config", "/snowplow/config/enrich.hocon",
+      "--enrichments", "file:///snowplow/config/enrichments/"
+    ]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      iglu-server:
+        condition: service_started
+    restart: unless-stopped
+
+  #### ─── Temporal PostgreSQL ─────────────────────────────────────
+  temporal-postgresql:
+    image: postgres:13
+    container_name: demo-temporal-postgresql
+    networks:
+      - demo-net
+    environment:
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      POSTGRES_DB: ${TEMPORAL_POSTGRES_DB:-temporal}
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEMPORAL_POSTGRES_USER:-temporal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  #### ─── Temporal ────────────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.22.4}
+    container_name: demo-temporal
+    networks:
+      - demo-net
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER:-temporal}
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      - POSTGRES_SEEDS=temporal-postgresql
+      - POSTGRES_DB=${TEMPORAL_POSTGRES_DB:-temporal}
+      - VISIBILITY_DBNAME=${TEMPORAL_VISIBILITY_DB:-temporal_visibility}
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  #### ─── Temporal Admin Tools ────────────────────────────────────
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.22.4}
+    container_name: demo-temporal-admin-tools
+    networks:
+      - demo-net
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  #### ─── Temporal UI ─────────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.22.3}
+    container_name: demo-temporal-ui
+    networks:
+      - demo-net
+    ports:
+      - "8200:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=${TEMPORAL_CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      - temporal
+    restart: unless-stopped
+
+  #### ─── Temporal Worker ─────────────────────────────────────────
+  temporal-worker:
+    build:
+      context: ../temporal-worker
+      dockerfile: Dockerfile
+    container_name: demo-temporal-worker
+    networks:
+      - demo-net
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=snowplow_enriched_good
+      - KAFKA_CONSUMER_GROUP=temporal-snowplow-consumer
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TASK_QUEUE=snowplow-events
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_NAMESPACE=snowplow
+    depends_on:
+      - temporal
+      - kafka
+      - redis
+    restart: unless-stopped
+

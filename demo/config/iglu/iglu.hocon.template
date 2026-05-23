@@ -1,0 +1,14 @@
+{
+  "database": {
+    "type": "postgres",
+    "host": "${IGLU_DB_HOST}",
+    "port": ${IGLU_DB_PORT},
+    "dbname": "${IGLU_DB_NAME}",
+    "username": "${IGLU_DB_USER}",
+    "password": "${IGLU_DB_PASSWORD}"
+  },
+  "superApiKey": "${IGLU_SUPER_API_KEY}",
+  "license": {
+    "accept": true
+  }
+}

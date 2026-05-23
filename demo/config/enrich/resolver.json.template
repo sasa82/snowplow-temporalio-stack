@@ -1,0 +1,29 @@
+{
+  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-3",
+  "data": {
+    "cacheSize": 0,
+    "repositories": [
+      {
+        "name": "Iglu Central",
+        "priority": 1,
+        "vendorPrefixes": ["com.snowplowanalytics"],
+        "connection": {
+          "http": {
+            "uri": "http://iglucentral.com"
+          }
+        }
+      },
+      {
+        "name": "MyIgluServer",
+        "priority": 0,
+        "vendorPrefixes": ["com.snowplowanalytics", "com.acme", "com.snowplowanalytics.snowplow.enrichments"],
+        "connection": {
+          "http": {
+            "uri": "http://iglu-server:8080/api",
+            "apikey": "${IGLU_SUPER_API_KEY}"
+          }
+        }
+      }
+    ]
+  }
+}
